@@ -1,0 +1,16 @@
+{
+  "functions": {
+    "api/webhooks/mercadopago.ts": {
+      "maxDuration": 10
+    },
+    "api/payments/create.ts": {
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ]
+}
