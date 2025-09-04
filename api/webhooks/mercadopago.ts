@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { z } from "zod";
-import { webhookPayloadSchema } from "../../src/lib/schemas/webhook.js";
-import { validateWebhookSignature } from "../../src/lib/config/server-environment.js";
+import { webhookPayloadSchema } from "../../src/lib/schemas/webhook";
+import { validateWebhookSignature } from "../../src/lib/config/server-environment";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
