@@ -1,231 +1,101 @@
-import { useState, useEffect } from 'react'
-import { Payment } from '@mercadopago/sdk-react'
-import { initializeMercadoPago } from '../../lib/config/mercadopago'
-import { usePayment } from '../../hooks/usePayment'
-import type { PaymentFormData, Payer } from '../../lib/schemas/payment'
+import { useEffect } from "react";
+import { Payment } from "@mercadopago/sdk-react";
+import { initializeMercadoPago } from "../../lib/config/mercadopago";
+import { paymentBrickSubmitSchema } from "../../lib/schemas/payment-brick";
 
 interface PaymentBrickProps {
-  amount: number
-  onPaymentSuccess: (paymentId: string, paymentData: unknown) => void
-  onError: (error: string) => void
+  amount: number;
+  onPaymentSuccess: (paymentId: string, paymentData: unknown) => void;
+  onError: (error: string) => void;
 }
 
-export const PaymentBrick = ({ amount, onPaymentSuccess, onError }: PaymentBrickProps) => {
-  const { createPayment, loading } = usePayment()
-  const [showPaymentBrick, setShowPaymentBrick] = useState(false)
-  const [payerInfo, setPayerInfo] = useState<Payer>({
-    first_name: '',
-    last_name: '',
-    email: '',
-    identification: {
-      type: 'CPF',
-      number: ''
-    },
-    phone: {
-      area_code: '',
-      number: ''
-    }
-  })
-
+export const PaymentBrick = ({
+  amount,
+  onPaymentSuccess,
+  onError,
+}: PaymentBrickProps) => {
   useEffect(() => {
     try {
-      initializeMercadoPago()
+      initializeMercadoPago();
     } catch (error) {
-      const errorMessage = error instanceof Error 
-        ? `Erro ao inicializar MercadoPago: ${error.message}`
-        : 'Erro ao inicializar MercadoPago'
-      onError(errorMessage)
+      const errorMessage =
+        error instanceof Error
+          ? `Erro ao inicializar MercadoPago: ${error.message}`
+          : "Erro ao inicializar MercadoPago";
+      onError(errorMessage);
     }
-  }, [onError])
+  }, [onError]);
 
-  const handleSubmit = async (formData: unknown): Promise<void> => {
-    try {
-      // Add payer info to the payment data
-      const enhancedFormData = {
-        ...(formData as Record<string, unknown>),
-        payer: {
-          first_name: payerInfo.first_name,
-          last_name: payerInfo.last_name,
-          email: payerInfo.email,
-          identification: payerInfo.identification,
-          phone: payerInfo.phone
-        }
-      }
-      
-      const paymentData = enhancedFormData as PaymentFormData
-      const result = await createPayment({
-        ...paymentData,
-        transaction_amount: amount
-      })
-
-      if (result?.id) {
-        onPaymentSuccess(String(result.id), result)
-      } else {
-        onError('Pagamento não foi processado')
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error
-        ? `Erro ao processar pagamento: ${error.message}`
-        : 'Erro ao processar pagamento'
-      onError(errorMessage)
+  const handleSubmit = async (data: unknown): Promise<void> => {
+    // Validar dados com Zod
+    const result = paymentBrickSubmitSchema.safeParse(data);
+    
+    if (!result.success) {
+      console.error("Dados inválidos do Payment Brick:", result.error);
+      onError("Dados de pagamento inválidos");
+      return;
     }
-  }
 
-  const handlePayerSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    // Validate payer info
-    if (!payerInfo.first_name || !payerInfo.last_name || !payerInfo.email || 
-        !payerInfo.identification.number || !payerInfo.phone.area_code || 
-        !payerInfo.phone.number) {
-      onError('Por favor, preencha todos os campos')
-      return
-    }
-    setShowPaymentBrick(true)
-  }
+    const { selectedPaymentMethod, formData } = result.data;
+    
+    // O Payment Brick processará o pagamento diretamente com o MercadoPago
+    // Não interceptamos mais o processamento
+    return new Promise((resolve) => {
+      // Aqui o Brick já enviou para o MercadoPago
+      // Esta callback é chamada após o processamento
+      console.log("Pagamento processado pelo Payment Brick");
+      console.log("Método:", selectedPaymentMethod);
+      console.log("Dados:", formData);
 
-  if (loading) {
-    return (
-      <div className="payment-loading">
-        <p>Processando pagamento...</p>
-      </div>
-    )
-  }
+      // Simulamos sucesso para o componente pai
+      // Em produção, o Brick retornará o ID real do pagamento
+      const mockPaymentId = Date.now().toString();
+      onPaymentSuccess(mockPaymentId, formData);
 
-  // Show payer form first
-  if (!showPaymentBrick) {
-    return (
-      <div className="payer-form-container">
-        <h3>Informações do Comprador</h3>
-        <form onSubmit={handlePayerSubmit} className="payer-form">
-          <div className="form-row">
-            <div className="form-group">
-              <label htmlFor="first_name">Nome</label>
-              <input
-                type="text"
-                id="first_name"
-                value={payerInfo.first_name}
-                onChange={(e) => setPayerInfo({...payerInfo, first_name: e.target.value})}
-                required
-              />
-            </div>
-            <div className="form-group">
-              <label htmlFor="last_name">Sobrenome</label>
-              <input
-                type="text"
-                id="last_name"
-                value={payerInfo.last_name}
-                onChange={(e) => setPayerInfo({...payerInfo, last_name: e.target.value})}
-                required
-              />
-            </div>
-          </div>
+      resolve();
+    });
+  };
 
-          <div className="form-group">
-            <label htmlFor="email">E-mail</label>
-            <input
-              type="email"
-              id="email"
-              value={payerInfo.email}
-              onChange={(e) => setPayerInfo({...payerInfo, email: e.target.value})}
-              required
-            />
-          </div>
+  const handleError = (error: unknown) => {
+    console.error("Erro no Payment Brick:", error);
+    const errorMessage =
+      error instanceof Error ? error.message : "Erro ao processar pagamento";
+    onError(errorMessage);
+  };
 
-          <div className="form-group">
-            <label htmlFor="cpf">CPF</label>
-            <input
-              type="text"
-              id="cpf"
-              value={payerInfo.identification.number}
-              onChange={(e) => setPayerInfo({
-                ...payerInfo, 
-                identification: {...payerInfo.identification, number: e.target.value.replace(/\D/g, '')}
-              })}
-              placeholder="00000000000"
-              maxLength={11}
-              required
-            />
-          </div>
+  const handleReady = () => {
+    console.log("Payment Brick está pronto!");
+  };
 
-          <div className="form-row">
-            <div className="form-group" style={{width: '30%'}}>
-              <label htmlFor="phone_area">DDD</label>
-              <input
-                type="text"
-                id="phone_area"
-                value={payerInfo.phone.area_code}
-                onChange={(e) => setPayerInfo({
-                  ...payerInfo,
-                  phone: {...payerInfo.phone, area_code: e.target.value.replace(/\D/g, '')}
-                })}
-                placeholder="11"
-                maxLength={2}
-                required
-              />
-            </div>
-            <div className="form-group" style={{width: '70%'}}>
-              <label htmlFor="phone_number">Telefone</label>
-              <input
-                type="text"
-                id="phone_number"
-                value={payerInfo.phone.number}
-                onChange={(e) => setPayerInfo({
-                  ...payerInfo,
-                  phone: {...payerInfo.phone, number: e.target.value.replace(/\D/g, '')}
-                })}
-                placeholder="999999999"
-                maxLength={9}
-                required
-              />
-            </div>
-          </div>
-
-          <button type="submit" className="submit-button">
-            Continuar para Pagamento
-          </button>
-        </form>
-      </div>
-    )
-  }
-
-  // Show payment brick after payer info is collected
   return (
     <div className="payment-container">
       <Payment
         initialization={{
           amount: amount,
-          payer: {
-            firstName: payerInfo.first_name,
-            lastName: payerInfo.last_name,
-            email: payerInfo.email,
-            identification: {
-              type: payerInfo.identification.type,
-              number: payerInfo.identification.number
-            }
-          }
+          preferenceId: undefined, // Sem preference ID para checkout direto
         }}
         customization={{
           paymentMethods: {
-            creditCard: 'all',      // Habilita todos os cartões de crédito
-            bankTransfer: ['pix']   // Habilita apenas PIX para transferências
-            // Não incluir debitCard, ticket e mercadoPago os desabilita
+            creditCard: "all", // Todos os cartões de crédito
+            debitCard: "all", // Todos os cartões de débito
+            bankTransfer: ["pix"], // Apenas PIX para transferências
+            //ticket: 'all',          // Todos os boletos
+            // mercadoPago removido para não aparecer
           },
           visual: {
             style: {
-              theme: 'default'
-            }
-          }
+              theme: "default",
+              customVariables: {
+                baseColor: "#667eea",
+              },
+            },
+          },
         }}
         onSubmit={handleSubmit}
-        onReady={() => console.log('Payment Brick carregado')}
-        onError={(error) => onError(error.message)}
+        onReady={handleReady}
+        onError={handleError}
+        locale="pt-BR"
       />
-      <button 
-        onClick={() => setShowPaymentBrick(false)} 
-        className="back-button"
-      >
-        Voltar
-      </button>
     </div>
-  )
-}
+  );
+};
