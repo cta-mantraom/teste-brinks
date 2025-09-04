@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Payment } from "@mercadopago/sdk-react";
 import { initializeMercadoPago } from "../../lib/config/mercadopago";
-import { paymentBrickSubmitSchema } from "../../lib/schemas/payment-brick";
+import { paymentBrickSubmitSchema, type PaymentBrickFormData } from "../../lib/schemas/payment-brick";
 
 interface PaymentBrickProps {
   amount: number;
@@ -38,22 +38,61 @@ export const PaymentBrick = ({
 
     const { selectedPaymentMethod, formData } = result.data;
     
-    // O Payment Brick processará o pagamento diretamente com o MercadoPago
-    // Não interceptamos mais o processamento
-    return new Promise((resolve) => {
-      // Aqui o Brick já enviou para o MercadoPago
-      // Esta callback é chamada após o processamento
+    try {
       console.log("Pagamento processado pelo Payment Brick");
       console.log("Método:", selectedPaymentMethod);
       console.log("Dados:", formData);
 
-      // Simulamos sucesso para o componente pai
-      // Em produção, o Brick retornará o ID real do pagamento
-      const mockPaymentId = Date.now().toString();
-      onPaymentSuccess(mockPaymentId, formData);
+      // Mapear dados do Brick para o formato esperado pelo backend
+      // Usar dados do formData com validação de tipos
+      const typedFormData = formData as PaymentBrickFormData | undefined;
+      
+      const paymentPayload = {
+        transaction_amount: amount,
+        payment_method_id: selectedPaymentMethod || 'pix',
+        payer: typedFormData?.payer || {
+          email: typedFormData?.email || '',
+          first_name: typedFormData?.first_name || '',
+          last_name: typedFormData?.last_name || '',
+          identification: {
+            type: 'CPF',
+            number: typedFormData?.identification?.number || ''
+          },
+          phone: {
+            area_code: typedFormData?.phone?.area_code || '',
+            number: typedFormData?.phone?.number || ''
+          }
+        },
+        description: 'Checkout Brinks',
+        installments: typedFormData?.installments || 1
+      };
 
-      resolve();
-    });
+      // Envia dados para nosso backend processar
+      const response = await fetch("/api/payments/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(paymentPayload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erro ao processar pagamento");
+      }
+
+      const paymentResult = await response.json();
+      
+      // Retorna os dados do pagamento real do MercadoPago
+      onPaymentSuccess(paymentResult.id.toString(), paymentResult);
+      
+    } catch (error) {
+      console.error("Erro ao processar pagamento:", error);
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : "Erro ao processar pagamento";
+      onError(errorMessage);
+    }
   };
 
   const handleError = (error: unknown) => {
@@ -73,6 +112,9 @@ export const PaymentBrick = ({
         initialization={{
           amount: amount,
           preferenceId: undefined, // Sem preference ID para checkout direto
+          payer: {
+            email: "",
+          },
         }}
         customization={{
           paymentMethods: {
@@ -81,6 +123,7 @@ export const PaymentBrick = ({
             bankTransfer: ["pix"], // Apenas PIX para transferências
             //ticket: 'all',          // Todos os boletos
             // mercadoPago removido para não aparecer
+            maxInstallments: 12,
           },
           visual: {
             style: {
@@ -89,11 +132,14 @@ export const PaymentBrick = ({
                 baseColor: "#667eea",
               },
             },
+            hidePaymentButton: false, // Mostrar o botão de pagamento
+            hideFormTitle: false,
           },
         }}
         onSubmit={handleSubmit}
         onReady={handleReady}
         onError={handleError}
+        onBinChange={(bin) => console.log('BIN mudou:', bin)}
         locale="pt-BR"
       />
     </div>

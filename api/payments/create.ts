@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import axios from "axios";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { paymentFormDataSchema } from "../../src/lib/schemas/payment";
 import { getServerConfig } from "../../src/lib/config/server-environment";
@@ -11,35 +12,75 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Validate input with Zod
-    const paymentData = paymentFormDataSchema.parse(req.body);
+    // Para PIX, os dados do pagador são opcionais
+    const isPix = req.body.payment_method_id === 'pix';
+    
+    // Validate input with Zod - relaxar validação para PIX
+    let paymentData;
+    if (isPix) {
+      // Para PIX, apenas email é obrigatório
+      const pixPaymentSchema = z.object({
+        transaction_amount: z.number().positive('Valor deve ser positivo'),
+        payment_method_id: z.literal('pix'),
+        payer: z.object({
+          email: z.string().email('Email inválido'),
+          first_name: z.string().optional().default(''),
+          last_name: z.string().optional().default(''),
+          identification: z.object({
+            type: z.string().optional().default('CPF'),
+            number: z.string().optional().default('')
+          }).optional(),
+          phone: z.object({
+            area_code: z.string().optional().default(''),
+            number: z.string().optional().default('')
+          }).optional()
+        }),
+        description: z.string().optional().default('Checkout Brinks'),
+        installments: z.number().optional().default(1)
+      });
+      
+      paymentData = pixPaymentSchema.parse(req.body);
+    } else {
+      // Para cartões, todos os dados são obrigatórios
+      paymentData = paymentFormDataSchema.parse(req.body);
+    }
 
     // Get server config with ACCESS_TOKEN
     const config = getServerConfig();
 
     // Format payer data for MercadoPago API
-    const mercadoPagoPayload = {
+    const mercadoPagoPayload: Record<string, unknown> = {
       transaction_amount: paymentData.transaction_amount,
       payment_method_id: paymentData.payment_method_id,
       description: paymentData.description || "Checkout Brinks",
       installments: paymentData.installments || 1,
       payer: {
-        first_name: paymentData.payer.first_name,
-        last_name: paymentData.payer.last_name,
         email: paymentData.payer.email,
-        identification: {
-          type: paymentData.payer.identification.type,
-          number: paymentData.payer.identification.number
-        },
-        phone: {
-          area_code: paymentData.payer.phone.area_code,
-          number: paymentData.payer.phone.number
-        }
       },
       notification_url: `${config.FRONTEND_URL}/api/webhooks/mercadopago`,
       statement_descriptor: "CHECKOUT BRINKS",
       external_reference: `brinks-${Date.now()}`
     };
+    
+    // Adicionar dados completos do pagador se disponíveis
+    if (paymentData.payer.first_name) {
+      (mercadoPagoPayload.payer as Record<string, unknown>).first_name = paymentData.payer.first_name;
+    }
+    if (paymentData.payer.last_name) {
+      (mercadoPagoPayload.payer as Record<string, unknown>).last_name = paymentData.payer.last_name;
+    }
+    if (paymentData.payer.identification?.number) {
+      (mercadoPagoPayload.payer as Record<string, unknown>).identification = {
+        type: paymentData.payer.identification.type,
+        number: paymentData.payer.identification.number
+      };
+    }
+    if (paymentData.payer.phone?.number) {
+      (mercadoPagoPayload.payer as Record<string, unknown>).phone = {
+        area_code: paymentData.payer.phone.area_code,
+        number: paymentData.payer.phone.number
+      };
+    }
 
     // Create payment on MercadoPago servers
     const response = await axios.post(
@@ -48,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       {
         headers: {
           Authorization: `Bearer ${config.MERCADOPAGO_ACCESS_TOKEN}`,
-          "X-Idempotency-Key": crypto.randomUUID(),
+          "X-Idempotency-Key": randomUUID(),
           "Content-Type": "application/json",
         },
       }

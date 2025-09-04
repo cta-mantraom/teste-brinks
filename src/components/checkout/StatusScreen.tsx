@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { StatusScreen } from '@mercadopago/sdk-react'
 import type { PixPaymentResponse } from '../../lib/schemas/payment'
 
 interface PaymentStatusScreenProps {
@@ -7,9 +6,64 @@ interface PaymentStatusScreenProps {
   paymentData?: PixPaymentResponse
 }
 
-export const PaymentStatusScreen = ({ paymentId, paymentData }: PaymentStatusScreenProps) => {
+export const PaymentStatusScreen = ({ paymentId, paymentData: initialData }: PaymentStatusScreenProps) => {
   const [showQRCode, setShowQRCode] = useState(false)
   const [copyButtonText, setCopyButtonText] = useState('Copiar Código PIX')
+  const [paymentData, setPaymentData] = useState<PixPaymentResponse | undefined>(initialData)
+  const [statusMessage, setStatusMessage] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    // Se já temos os dados iniciais, use-os
+    if (initialData?.point_of_interaction?.transaction_data) {
+      setPaymentData(initialData)
+      setShowQRCode(true)
+      updateStatusMessage(initialData.status)
+    } else if (paymentId) {
+      // Se não temos dados iniciais, busque do backend
+      fetchPaymentStatus()
+    }
+  }, [paymentId, initialData])
+
+  const fetchPaymentStatus = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch(`/api/payments/status?paymentId=${paymentId}`)
+      
+      if (!response.ok) {
+        throw new Error('Falha ao buscar status do pagamento')
+      }
+
+      const data = await response.json()
+      setPaymentData(data)
+      
+      if (data.point_of_interaction?.transaction_data) {
+        setShowQRCode(true)
+      }
+      
+      updateStatusMessage(data.status)
+    } catch (error) {
+      console.error('Erro ao buscar status:', error)
+      setStatusMessage('Os detalhes de pagamento não foram encontrados')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const updateStatusMessage = (status: string) => {
+    const statusMessages: Record<string, string> = {
+      pending: 'Aguardando pagamento...',
+      approved: 'Pagamento aprovado!',
+      rejected: 'Pagamento rejeitado',
+      cancelled: 'Pagamento cancelado',
+      in_process: 'Processando pagamento...',
+      in_mediation: 'Em mediação',
+      charged_back: 'Estornado',
+      refunded: 'Reembolsado',
+    }
+    
+    setStatusMessage(statusMessages[status] || 'Status desconhecido')
+  }
 
   useEffect(() => {
     if (paymentData?.point_of_interaction?.transaction_data) {
@@ -33,13 +87,20 @@ export const PaymentStatusScreen = ({ paymentId, paymentData }: PaymentStatusScr
 
   return (
     <div className="status-container">
-      <StatusScreen
-        initialization={{
-          paymentId: paymentId
-        }}
-        onReady={() => console.log('Status Screen carregado')}
-        onError={(error) => console.error('Erro no Status Screen:', error)}
-      />
+      {isLoading && (
+        <div className="loading-container">
+          <p>Carregando detalhes do pagamento...</p>
+        </div>
+      )}
+      
+      {!isLoading && statusMessage && (
+        <div className="status-message">
+          <h2>{statusMessage}</h2>
+          {paymentData && (
+            <p className="payment-id">ID do Pagamento: {paymentData.id}</p>
+          )}
+        </div>
+      )}
       
       {showQRCode && paymentData?.point_of_interaction && (
         <div className="pix-section">
