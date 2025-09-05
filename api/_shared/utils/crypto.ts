@@ -1,4 +1,4 @@
-import { getServerConfig } from '../config/server'
+import { getServerConfig } from '../config/server.js'
 
 export const validateWebhookSignature = async (
   payload: string,

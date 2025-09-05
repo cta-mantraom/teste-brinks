@@ -7,8 +7,8 @@ import {
   cardPaymentSchema,
   type PixPayment,
   type CardPayment 
-} from "../_shared/schemas/payment";
-import { getServerConfig } from "../_shared/config/server";
+} from "../_shared/schemas/payment.js";
+import { getServerConfig } from "../_shared/config/server.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST

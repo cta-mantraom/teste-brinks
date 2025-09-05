@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import axios from "axios";
 import { z } from "zod";
-import { getServerConfig } from "../_shared/config/server";
+import { getServerConfig } from "../_shared/config/server.js";
 
 const statusQuerySchema = z.object({
   paymentId: z.string().min(1, 'paymentId obrigatório')
