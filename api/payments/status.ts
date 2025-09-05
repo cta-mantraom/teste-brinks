@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import axios from "axios";
 import { z } from "zod";
-import { getServerConfig } from "../../src/lib/config/server-environment";
+import { getServerConfig } from "../_shared/config/server";
 
 const statusQuerySchema = z.object({
-  paymentId: z.string().min(1)
+  paymentId: z.string().min(1, 'paymentId obrigatório')
 });
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -14,10 +14,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Validate query params with Zod
-    const { paymentId } = statusQuerySchema.parse(req.query);
+    // Validar query como unknown
+    const query = req.query as unknown;
+    const { paymentId } = statusQuerySchema.parse(query);
 
-    // Get server config with ACCESS_TOKEN
+    // Configuração lazy load
     const config = getServerConfig();
 
     // Get payment status from MercadoPago
@@ -43,24 +44,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       payment_method_id: response.data.payment_method_id,
       external_reference: response.data.external_reference
     });
-  } catch (error) {
-    console.error("Status check error:", error);
+  } catch (error: unknown) {
+    console.error("[STATUS_CHECK] Erro:", error);
 
     if (error instanceof z.ZodError) {
       return res.status(400).json({
-        error: "Invalid request",
+        error: "Requisição inválida",
         details: error.issues,
       });
     }
 
     if (axios.isAxiosError(error)) {
-      console.error("MercadoPago API Error:", error.response?.data);
+      const mpError = error.response?.data;
       return res.status(error.response?.status || 500).json({
-        error: error.response?.data?.message || error.response?.data?.cause?.description || "Failed to get payment status",
-        cause: error.response?.data?.cause
+        error: mpError?.message || mpError?.cause?.description || "Falha ao obter status",
+        cause: mpError?.cause
       });
     }
 
-    return res.status(500).json({ error: "Internal server error" });
+    const message = error instanceof Error ? error.message : 'Erro interno';
+    return res.status(500).json({ error: message });
   }
 }
