@@ -93,6 +93,15 @@ export const PaymentBrick = ({
 
       const paymentResult = await response.json();
       console.log("✅ Pagamento criado com sucesso:", paymentResult);
+      console.log("🆔 ID do pagamento MercadoPago:", paymentResult.id);
+      
+      // Para PIX, verificar se temos os dados do QR Code
+      if (paymentMethodId === 'pix' && paymentResult.point_of_interaction) {
+        console.log("📱 Dados PIX recebidos:", {
+          hasQrCode: !!paymentResult.point_of_interaction?.transaction_data?.qr_code,
+          hasQrCodeBase64: !!paymentResult.point_of_interaction?.transaction_data?.qr_code_base64
+        });
+      }
       
       // Notificar sucesso com ID real do pagamento
       onPaymentSuccess(paymentResult.id.toString(), paymentResult);

@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { UserDataForm, type UserData } from './UserDataForm'
 import { PaymentBrick } from './PaymentBrick'
 import { PaymentStatusScreen } from './StatusScreen'
-import type { PixPaymentResponse } from '../../lib/schemas/payment'
 
 interface CheckoutFlowProps {
   amount: number
@@ -14,7 +13,6 @@ export const CheckoutFlow = ({ amount }: CheckoutFlowProps) => {
   const [currentStep, setCurrentStep] = useState<CheckoutStep>('user-data')
   const [userData, setUserData] = useState<UserData | null>(null)
   const [paymentId, setPaymentId] = useState<string>('')
-  const [paymentData, setPaymentData] = useState<PixPaymentResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleUserDataSubmit = (data: UserData) => {
@@ -24,8 +22,9 @@ export const CheckoutFlow = ({ amount }: CheckoutFlowProps) => {
   }
 
   const handlePaymentSuccess = (id: string, data: unknown) => {
+    console.log('Pagamento bem-sucedido! ID:', id)
+    console.log('Dados do pagamento:', data)
     setPaymentId(id)
-    setPaymentData(data as PixPaymentResponse)
     setCurrentStep('status')
     setError(null)
   }
@@ -39,7 +38,6 @@ export const CheckoutFlow = ({ amount }: CheckoutFlowProps) => {
     setCurrentStep('user-data')
     setUserData(null)
     setPaymentId('')
-    setPaymentData(null)
     setError(null)
   }
 
@@ -75,18 +73,10 @@ export const CheckoutFlow = ({ amount }: CheckoutFlowProps) => {
       )}
 
       {currentStep === 'status' && paymentId && (
-        <div className="status-wrapper">
-          <PaymentStatusScreen
-            paymentId={paymentId}
-            paymentData={paymentData || undefined}
-          />
-          <button 
-            onClick={resetCheckout}
-            className="new-payment-button"
-          >
-            Fazer novo pagamento
-          </button>
-        </div>
+        <PaymentStatusScreen
+          paymentId={paymentId}
+          onReset={resetCheckout}
+        />
       )}
 
       {currentStep === 'error' && (
