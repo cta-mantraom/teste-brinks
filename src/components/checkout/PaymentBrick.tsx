@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { Payment } from "@mercadopago/sdk-react";
 import { initializeMercadoPago } from "../../lib/config/mercadopago";
-import { paymentBrickSubmitSchema } from "../../lib/schemas/payment-brick";
 
 interface PaymentBrickProps {
   amount: number;
@@ -35,53 +34,78 @@ export const PaymentBrick = ({
   }, [onError]);
 
   const handleSubmit = async (data: unknown): Promise<void> => {
-    // CHECKOUT BRICKS PURO: O Payment Brick processa DIRETAMENTE com MercadoPago
-    // Não devemos interceptar ou enviar para nossa API
-    
     try {
-      console.log("✅ Payment Brick processou o pagamento com sucesso!");
-      console.log("📦 Dados completos recebidos do Brick:", JSON.stringify(data, null, 2));
+      console.log("✅ Payment Brick processou o pagamento!");
+      console.log("📦 Dados recebidos:", JSON.stringify(data, null, 2));
       
-      // Validar dados recebidos do Brick
-      const result = paymentBrickSubmitSchema.safeParse(data);
+      // Extrair dados do Brick
+      const brickData = data as Record<string, unknown>;
+      const formData = brickData.formData as Record<string, unknown>;
       
-      if (!result.success) {
-        console.error("Erro na validação dos dados:", result.error);
-        onError("Dados de pagamento inválidos");
-        return;
+      // Mapear payment_method_id corretamente
+      let paymentMethodId = formData?.payment_method_id as string;
+      
+      // Corrigir mapeamento: bank_transfer (PIX) -> pix
+      if (brickData.paymentType === 'bank_transfer' || paymentMethodId === 'pix') {
+        paymentMethodId = 'pix';
+      } else if (brickData.paymentType === 'credit_card') {
+        paymentMethodId = 'credit_card';
+      } else if (brickData.paymentType === 'debit_card') {
+        paymentMethodId = 'debit_card';
+      }
+      
+      // Preparar dados para enviar ao backend
+      const paymentPayload = {
+        transaction_amount: amount,
+        payment_method_id: paymentMethodId, // Usar valores corretos: pix, credit_card, debit_card
+        payer: {
+          email: userData?.email || (formData?.payer as Record<string, unknown>)?.email || '',
+          first_name: userData?.firstName || '',
+          last_name: userData?.lastName || '',
+          identification: {
+            type: 'CPF',
+            number: userData?.cpf.replace(/\D/g, '') || ''
+          },
+          phone: {
+            area_code: userData?.phone.replace(/\D/g, '').slice(0, 2) || '',
+            number: userData?.phone.replace(/\D/g, '').slice(2) || ''
+          }
+        },
+        description: 'Checkout Brinks',
+        installments: (formData?.installments as number) || 1
+      };
+
+      console.log("🚀 Enviando pagamento para processar:", paymentPayload);
+
+      // Enviar para nossa API processar o pagamento
+      const response = await fetch("/api/payments/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(paymentPayload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Erro ao processar pagamento");
       }
 
-      const { selectedPaymentMethod, formData } = result.data;
-      console.log("Método de pagamento:", selectedPaymentMethod);
-      console.log("Dados do formulário:", formData);
+      const paymentResult = await response.json();
+      console.log("✅ Pagamento criado com sucesso:", paymentResult);
       
-      // IMPORTANTE: O pagamento JÁ FOI PROCESSADO pelo MercadoPago
-      // O Brick já gerou o token, processou o pagamento e retornou o resultado
-      // Aqui apenas recebemos a notificação do resultado
+      // Notificar sucesso com ID real do pagamento
+      onPaymentSuccess(paymentResult.id.toString(), paymentResult);
       
-      // Se o Brick chegou aqui, o pagamento foi bem-sucedido
-      // O Brick retorna o ID do pagamento e os dados no formData
-      const paymentId = (formData as Record<string, unknown>)?.paymentId as string || 'payment-processed';
-      
-      // Notificar sucesso ao componente pai
-      onPaymentSuccess(paymentId, {
-        selectedPaymentMethod,
-        formData,
-        status: 'approved',
-        message: 'Pagamento processado com sucesso pelo Checkout Bricks'
-      });
-      
-      // Retornar sucesso para o Brick
       return Promise.resolve();
       
     } catch (error) {
-      console.error("Erro no processamento do Payment Brick:", error);
+      console.error("❌ Erro ao processar pagamento:", error);
       const errorMessage = error instanceof Error 
         ? error.message 
         : "Erro ao processar pagamento";
       onError(errorMessage);
       
-      // Retornar erro para o Brick
       return Promise.reject(error);
     }
   };
@@ -107,15 +131,10 @@ export const PaymentBrick = ({
 
   const handleReady = () => {
     console.log("✅ Payment Brick está pronto e renderizado!");
-    console.log("Configuração do Brick:", {
+    console.log("Configuração:", {
       amount,
       locale: 'pt-BR',
-      paymentMethods: {
-        creditCard: 'all',
-        debitCard: 'all',
-        bankTransfer: ['pix'],
-        ticket: 'all'
-      }
+      methods: 'pix, credit_card, debit_card'
     });
   };
 
@@ -148,10 +167,10 @@ export const PaymentBrick = ({
         }}
         customization={{
           paymentMethods: {
-            creditCard: "all", // Todos os cartões de crédito
-            debitCard: "all", // Todos os cartões de débito
-            bankTransfer: ["pix"], // PIX habilitado
-            ticket: "all", // Todos os boletos bancários
+            creditCard: "all", // Cartões de crédito
+            debitCard: "all", // Cartões de débito
+            bankTransfer: ["pix"], // PIX
+            // ticket: "all", // Desabilitado por enquanto
             // mercadoPago: "all", // Descomente se quiser pagamento com conta MP
             maxInstallments: 12,
           },

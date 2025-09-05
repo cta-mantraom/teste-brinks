@@ -19,13 +19,23 @@ export const PaymentStatusScreen = ({ paymentId, paymentData: initialData }: Pay
       setPaymentData(initialData)
       setShowQRCode(true)
       updateStatusMessage(initialData.status)
-    } else if (paymentId) {
-      // Se não temos dados iniciais, busque do backend
+    } else if (paymentId && paymentId !== 'payment-processed') {
+      // Se não temos dados iniciais E temos um ID real, busque do backend
       fetchPaymentStatus()
+    } else if (initialData) {
+      // Se temos dados mas não é PIX, use os dados fornecidos
+      setPaymentData(initialData)
+      updateStatusMessage(initialData.status || 'approved')
     }
   }, [paymentId, initialData])
 
   const fetchPaymentStatus = async () => {
+    // Não tenta buscar se não houver ID real
+    if (!paymentId || paymentId === 'payment-processed') {
+      console.log('ID de pagamento não disponível, usando dados fornecidos')
+      return
+    }
+    
     setIsLoading(true)
     try {
       const response = await fetch(`/api/payments/status?paymentId=${paymentId}`)

@@ -21,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Para PIX, apenas email é obrigatório
       const pixPaymentSchema = z.object({
         transaction_amount: z.number().positive('Valor deve ser positivo'),
-        payment_method_id: z.literal('pix'),
+        payment_method_id: z.enum(['pix', 'credit_card', 'debit_card']),
         payer: z.object({
           email: z.string().email('Email inválido'),
           first_name: z.string().optional().default(''),
