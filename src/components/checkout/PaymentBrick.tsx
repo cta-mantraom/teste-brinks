@@ -5,12 +5,20 @@ import { paymentBrickSubmitSchema } from "../../lib/schemas/payment-brick";
 
 interface PaymentBrickProps {
   amount: number;
+  userData?: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    cpf: string;
+    phone: string;
+  };
   onPaymentSuccess: (paymentId: string, paymentData: unknown) => void;
   onError: (error: string) => void;
 }
 
 export const PaymentBrick = ({
   amount,
+  userData,
   onPaymentSuccess,
   onError,
 }: PaymentBrickProps) => {
@@ -118,8 +126,17 @@ export const PaymentBrick = ({
           amount: amount,
           // preferenceId é opcional - use apenas se quiser pagamento com conta MP
           // preferenceId: "YOUR_PREFERENCE_ID",
-          payer: {
-            // Dados iniciais do pagador (podem ser preenchidos se já conhecidos)
+          payer: userData ? {
+            // Pré-preencher com dados do usuário coletados no formulário
+            email: userData.email,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            identification: {
+              type: "CPF",
+              number: userData.cpf.replace(/\D/g, ''), // Remove formatação do CPF
+            },
+          } : {
+            // Campos vazios se não houver dados do usuário
             email: "",
             firstName: "",
             lastName: "",
@@ -151,13 +168,6 @@ export const PaymentBrick = ({
             },
             hidePaymentButton: false, // Mostrar botão de pagamento
             hideFormTitle: false, // Mostrar título do formulário
-            // defaultPaymentOption controla qual forma de pagamento aparece primeiro
-            defaultPaymentOption: {
-              creditCardForm: true, // Mostrar formulário de cartão de crédito
-              debitCardForm: true, // Mostrar formulário de cartão de débito
-              bankTransferForm: true, // Mostrar PIX
-              ticketForm: true, // Mostrar boleto
-            },
           },
         }}
         onSubmit={handleSubmit}

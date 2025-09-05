@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { UserDataForm, type UserData } from './UserDataForm'
 import { PaymentBrick } from './PaymentBrick'
 import { PaymentStatusScreen } from './StatusScreen'
 import type { PixPaymentResponse } from '../../lib/schemas/payment'
@@ -7,13 +8,20 @@ interface CheckoutFlowProps {
   amount: number
 }
 
-type CheckoutStep = 'payment' | 'status' | 'error'
+type CheckoutStep = 'user-data' | 'payment' | 'status' | 'error'
 
 export const CheckoutFlow = ({ amount }: CheckoutFlowProps) => {
-  const [currentStep, setCurrentStep] = useState<CheckoutStep>('payment')
+  const [currentStep, setCurrentStep] = useState<CheckoutStep>('user-data')
+  const [userData, setUserData] = useState<UserData | null>(null)
   const [paymentId, setPaymentId] = useState<string>('')
   const [paymentData, setPaymentData] = useState<PixPaymentResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const handleUserDataSubmit = (data: UserData) => {
+    setUserData(data)
+    setCurrentStep('payment')
+    console.log('Dados do usuário coletados:', data)
+  }
 
   const handlePaymentSuccess = (id: string, data: unknown) => {
     setPaymentId(id)
@@ -28,7 +36,8 @@ export const CheckoutFlow = ({ amount }: CheckoutFlowProps) => {
   }
 
   const resetCheckout = () => {
-    setCurrentStep('payment')
+    setCurrentStep('user-data')
+    setUserData(null)
     setPaymentId('')
     setPaymentData(null)
     setError(null)
@@ -38,12 +47,28 @@ export const CheckoutFlow = ({ amount }: CheckoutFlowProps) => {
     <div className="checkout-flow">
       <div className="checkout-header">
         <h1>Checkout - Brinks</h1>
-        <p className="amount">Valor: R$ {amount.toFixed(2)}</p>
+        {currentStep !== 'user-data' && (
+          <p className="amount">Valor: R$ {amount.toFixed(2)}</p>
+        )}
+        {userData && currentStep === 'payment' && (
+          <div className="user-info">
+            <p>Cliente: {userData.firstName} {userData.lastName}</p>
+            <p>Email: {userData.email}</p>
+          </div>
+        )}
       </div>
 
-      {currentStep === 'payment' && (
+      {currentStep === 'user-data' && (
+        <UserDataForm
+          amount={amount}
+          onSubmit={handleUserDataSubmit}
+        />
+      )}
+
+      {currentStep === 'payment' && userData && (
         <PaymentBrick
           amount={amount}
+          userData={userData}
           onPaymentSuccess={handlePaymentSuccess}
           onError={handleError}
         />
