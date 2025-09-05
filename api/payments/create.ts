@@ -26,6 +26,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           email: z.string().email('Email inválido'),
           first_name: z.string().optional().default(''),
           last_name: z.string().optional().default(''),
+          entity_type: z.enum(['individual', 'association']).optional().default('individual'),
+          type: z.string().optional().default('customer'),
           identification: z.object({
             type: z.string().optional().default('CPF'),
             number: z.string().optional().default('')
@@ -41,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       paymentData = pixPaymentSchema.parse(req.body);
     } else {
-      // Para cartões, todos os dados são obrigatórios
+      // Para cartões, usar o schema completo com entity_type
       paymentData = paymentFormDataSchema.parse(req.body);
     }
 
@@ -56,6 +58,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       installments: paymentData.installments || 1,
       payer: {
         email: paymentData.payer.email,
+        entity_type: (paymentData.payer as any).entity_type || 'individual', // Obrigatório
+        type: (paymentData.payer as any).type || 'customer',
       },
       notification_url: `${config.FRONTEND_URL}/api/webhooks/mercadopago`,
       statement_descriptor: "CHECKOUT BRINKS",
@@ -102,9 +106,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status_detail: response.data.status_detail,
       point_of_interaction: response.data.point_of_interaction,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Payment error:", error);
+    console.error("Error details:", {
+      message: error?.message,
+      response: error?.response?.data,
+      stack: error?.stack
+    });
 
+    // Sempre retornar JSON, nunca HTML
     if (error instanceof z.ZodError) {
       return res.status(400).json({
         error: "Invalid payment data",
@@ -114,12 +124,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (axios.isAxiosError(error)) {
       console.error("MercadoPago API Error:", error.response?.data);
+      const errorMessage = error.response?.data?.message || 
+                          error.response?.data?.error ||
+                          error.response?.data?.cause?.description || 
+                          "Payment processing failed";
+      
+      // Retornar detalhes específicos do erro
       return res.status(error.response?.status || 500).json({
-        error: error.response?.data?.message || error.response?.data?.cause?.description || "Payment processing failed",
-        cause: error.response?.data?.cause
+        error: errorMessage,
+        cause: error.response?.data?.cause,
+        details: error.response?.data
       });
     }
 
-    return res.status(500).json({ error: "Internal server error" });
+    // Erro genérico - sempre retornar JSON
+    return res.status(500).json({ 
+      error: error?.message || "Internal server error",
+      type: "server_error"
+    });
   }
 }

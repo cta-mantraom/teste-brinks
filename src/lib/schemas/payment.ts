@@ -5,6 +5,8 @@ export const payerSchema = z.object({
   first_name: z.string().min(1, 'Nome obrigatório'),
   last_name: z.string().min(1, 'Sobrenome obrigatório'),
   email: z.string().email('Email inválido'),
+  entity_type: z.enum(['individual', 'association']).default('individual'), // Obrigatório para MercadoPago
+  type: z.string().default('customer'), // Tipo de pagador
   identification: z.object({
     type: z.literal('CPF'),
     number: z.string()

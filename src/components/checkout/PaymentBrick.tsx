@@ -62,6 +62,8 @@ export const PaymentBrick = ({
           email: userData?.email || (formData?.payer as Record<string, unknown>)?.email || '',
           first_name: userData?.firstName || '',
           last_name: userData?.lastName || '',
+          entity_type: 'individual', // OBRIGATÓRIO: individual ou association
+          type: 'customer', // Tipo de pagador
           identification: {
             type: 'CPF',
             number: userData?.cpf.replace(/\D/g, '') || ''
@@ -159,6 +161,7 @@ export const PaymentBrick = ({
             email: userData.email,
             firstName: userData.firstName,
             lastName: userData.lastName,
+            entityType: 'individual', // OBRIGATÓRIO para o Brick
             identification: {
               type: "CPF",
               number: userData.cpf.replace(/\D/g, ''), // Remove formatação do CPF
@@ -168,6 +171,7 @@ export const PaymentBrick = ({
             email: "",
             firstName: "",
             lastName: "",
+            entityType: 'individual', // OBRIGATÓRIO para o Brick
             identification: {
               type: "CPF",
               number: "",
