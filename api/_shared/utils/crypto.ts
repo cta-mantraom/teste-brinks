@@ -116,14 +116,3 @@ export const validateMpWebhookSignatureFromRequest = async (
     return false
   }
 }
-
-// Manter função antiga para compatibilidade temporária
-export const validateWebhookSignature = async (
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _payload: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _signature: string | undefined
-): Promise<boolean> => {
-  console.error('[WEBHOOK] AVISO: Usando função deprecada validateWebhookSignature')
-  return false // Sempre falha para forçar migração
-}

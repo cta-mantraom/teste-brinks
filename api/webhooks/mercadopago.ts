@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { z } from "zod";
 import { webhookPayloadSchema } from "../_shared/schemas/webhook.js";
 import { validateMpWebhookSignatureFromRequest } from "../_shared/utils/crypto.js";
+import { logger } from "../_shared/utils/logger.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "POST") {
@@ -9,27 +10,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Log inicial para debug
-    console.error("[WEBHOOK] Recebendo notificação");
-    console.error("[WEBHOOK] Method:", req.method);
-    console.error("[WEBHOOK] URL:", req.url);
-    console.error("[WEBHOOK] Headers recebidos:", Object.keys(req.headers).join(", "));
+    // Log estruturado inicial
+    logger.webhook('notification_received', {
+      method: req.method,
+      url: req.url,
+      headers: Object.keys(req.headers).join(", ")
+    });
     
     // Validar assinatura usando nova função
     const isValid = await validateMpWebhookSignatureFromRequest(req);
     if (!isValid) {
-      console.error("[WEBHOOK] Falha na validação da assinatura");
+      logger.warn('Invalid webhook signature', {
+        service: 'webhook',
+        operation: 'signature_validation'
+      });
       return res.status(401).json({ error: "Invalid signature" });
     }
     
-    console.error("[WEBHOOK] Assinatura validada com sucesso")
+    logger.webhook('signature_validated', {})
 
     // Validar payload como unknown
     const body = req.body as unknown;
     const payload = webhookPayloadSchema.parse(body);
 
-    // Log do payload processado
-    console.error("[WEBHOOK] Payload processado:", {
+    // Log estruturado do payload
+    logger.webhook('payload_processed', {
       type: payload.type,
       action: payload.action,
       dataId: payload.data?.id,
@@ -39,15 +44,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (payload.type === "payment" && payload.data.id) {
-      console.error(`[WEBHOOK] Payment ID: ${payload.data.id}`);
-      console.error(`[WEBHOOK] Action: ${payload.action}`);
-      console.error(`[WEBHOOK] Live Mode: ${payload.live_mode}`);
-      console.error(`[WEBHOOK] User ID: ${payload.user_id}`);
+      logger.payment('webhook_received', payload.data.id, {
+        action: payload.action,
+        liveMode: payload.live_mode,
+        userId: payload.user_id
+      });
 
-      // TODO: Aqui você processaria o webhook (atualizar DB, etc)
-      // Por enquanto, apenas confirma recebimento
+      // TODO: Implementar persistência em banco de dados
+      // - Salvar status do pagamento
+      // - Atualizar pedido
+      // - Enviar notificação ao usuário
       
-      console.error("[WEBHOOK] Notificação processada com sucesso");
+      logger.webhook('notification_processed', {
+        paymentId: payload.data.id
+      });
       
       return res.status(200).json({
         received: true,
@@ -56,14 +66,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    console.error("[WEBHOOK] Notificação recebida mas não é de pagamento");
+    logger.info('Non-payment notification received', {
+      service: 'webhook',
+      operation: 'notification',
+      type: payload.type
+    });
     return res.status(200).json({ 
       received: true,
       timestamp: new Date().toISOString()
     });
     
   } catch (error: unknown) {
-    console.error("[WEBHOOK] Erro ao processar notificação:", error);
+    logger.error('Webhook processing failed', {
+      service: 'webhook',
+      operation: 'process'
+    }, error);
 
     if (error instanceof z.ZodError) {
       return res.status(400).json({

@@ -55,7 +55,7 @@ export const PaymentBrick = ({
       }
       
       // Preparar dados para enviar ao backend
-      const paymentPayload = {
+      const paymentPayload: Record<string, unknown> = {
         transaction_amount: amount,
         payment_method_id: paymentMethodId, // Usar valores corretos: pix, credit_card, debit_card
         payer: {
@@ -76,6 +76,23 @@ export const PaymentBrick = ({
         description: 'Checkout Brinks',
         installments: (formData?.installments as number) || 1
       };
+      
+      // CRÍTICO: Para pagamentos com cartão, incluir o token gerado pelo Payment Brick
+      if (paymentMethodId === 'credit_card' || paymentMethodId === 'debit_card') {
+        const token = formData?.token as string;
+        if (!token) {
+          console.error("❌ ERRO CRÍTICO: Token do cartão não encontrado!");
+          console.error("FormData recebido:", formData);
+          throw new Error("Token do cartão é obrigatório para pagamentos com cartão");
+        }
+        paymentPayload.token = token;
+        console.log("💳 Token do cartão incluído no payload");
+        
+        // Incluir issuer_id se disponível
+        if (formData?.issuer_id) {
+          paymentPayload.issuer_id = formData.issuer_id;
+        }
+      }
 
       console.log("🚀 Enviando pagamento para processar:", paymentPayload);
 

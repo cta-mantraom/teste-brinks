@@ -9,6 +9,7 @@ import {
   type CardPayment 
 } from "../_shared/schemas/payment.js";
 import { getServerConfig } from "../_shared/config/server.js";
+import { logger } from "../_shared/utils/logger.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only allow POST
@@ -38,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const config = getServerConfig();
 
     // Construir payload para MercadoPago (tipagem explícita)
-    const mercadoPagoPayload = {
+    const mercadoPagoPayload: Record<string, unknown> = {
       transaction_amount: paymentData.transaction_amount,
       payment_method_id: paymentData.payment_method_id,
       description: paymentData.description,
@@ -70,6 +71,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       statement_descriptor: "CHECKOUT BRINKS",
       external_reference: `brinks-${Date.now()}`
     };
+    
+    // CRÍTICO: Incluir token para pagamentos com cartão
+    if (!isPix && 'token' in paymentData) {
+      const cardData = paymentData as CardPayment;
+      mercadoPagoPayload.token = cardData.token;
+      logger.payment('token_included', cardData.token.substring(0, 10) + '...', {
+        hasIssuer: !!cardData.issuer_id,
+        paymentMethod: paymentData.payment_method_id
+      });
+      
+      if (cardData.issuer_id) {
+        mercadoPagoPayload.issuer_id = cardData.issuer_id;
+      }
+    }
 
     // Create payment on MercadoPago servers
     const response = await axios.post(
@@ -92,7 +107,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       point_of_interaction: response.data.point_of_interaction,
     });
   } catch (error: unknown) { // NUNCA any, sempre unknown
-    console.error("[PAYMENT_CREATE] Erro:", error);
+    logger.error('Payment creation failed', { 
+      service: 'payment',
+      operation: 'create'
+    }, error);
     
     // Tratar erro Zod
     if (error instanceof z.ZodError) {
@@ -105,7 +123,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Tratar erro Axios
     if (axios.isAxiosError(error)) {
       const mpError = error.response?.data;
-      console.error("[MERCADOPAGO] Erro da API:", mpError);
+      logger.error('MercadoPago API error', {
+        service: 'payment',
+        operation: 'mercadopago_api',
+        status: error.response?.status,
+        errorCode: mpError?.cause?.[0]?.code,
+        errorMessage: mpError?.message
+      }, error);
       
       return res.status(error.response?.status || 500).json({
         error: mpError?.message || mpError?.error || "Falha no processamento",

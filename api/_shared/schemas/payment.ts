@@ -45,10 +45,12 @@ export const pixPaymentSchema = z.object({
   installments: z.literal(1).default(1)
 })
 
-// Schema Card Payment
+// Schema Card Payment - INCLUI TOKEN OBRIGATÓRIO
 export const cardPaymentSchema = z.object({
   transaction_amount: z.number().positive('Valor deve ser positivo'),
   payment_method_id: z.enum(['credit_card', 'debit_card']),
+  token: z.string().min(1, 'Token do cartão é obrigatório'), // TOKEN OBRIGATÓRIO
+  issuer_id: z.number().optional(), // Banco emissor (opcional)
   payer: cardPayerSchema,
   description: z.string().default('Checkout Brinks'),
   installments: z.number().int().min(1).max(12).default(1)
