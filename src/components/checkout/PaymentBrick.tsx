@@ -42,22 +42,25 @@ export const PaymentBrick = ({
       const brickData = data as Record<string, unknown>;
       const formData = brickData.formData as Record<string, unknown>;
       
-      // Mapear payment_method_id corretamente
-      let paymentMethodId = formData?.payment_method_id as string;
+      // CRÍTICO: Preservar payment_method_id original (bandeira real)
+      const paymentMethodId = formData?.payment_method_id as string; // Ex: "master", "visa", "elo"
+      const paymentType = brickData.paymentType as string; // Ex: "credit_card", "debit_card", "bank_transfer"
       
-      // Corrigir mapeamento: bank_transfer (PIX) -> pix
-      if (brickData.paymentType === 'bank_transfer' || paymentMethodId === 'pix') {
-        paymentMethodId = 'pix';
-      } else if (brickData.paymentType === 'credit_card') {
-        paymentMethodId = 'credit_card';
-      } else if (brickData.paymentType === 'debit_card') {
-        paymentMethodId = 'debit_card';
+      // Determinar payment_type_id baseado no tipo
+      let paymentTypeId: string | undefined;
+      if (paymentType === 'credit_card') {
+        paymentTypeId = 'credit_card';
+      } else if (paymentType === 'debit_card') {
+        paymentTypeId = 'debit_card';
       }
+      
+      // PIX usa payment_method_id = "pix" sem payment_type_id
+      const isPix = paymentType === 'bank_transfer' || paymentMethodId === 'pix';
       
       // Preparar dados para enviar ao backend
       const paymentPayload: Record<string, unknown> = {
         transaction_amount: amount,
-        payment_method_id: paymentMethodId, // Usar valores corretos: pix, credit_card, debit_card
+        payment_method_id: isPix ? 'pix' : paymentMethodId, // PIX = "pix", Cartão = bandeira real
         payer: {
           email: userData?.email || (formData?.payer as Record<string, unknown>)?.email || '',
           first_name: userData?.firstName || '',
@@ -77,21 +80,30 @@ export const PaymentBrick = ({
         installments: (formData?.installments as number) || 1
       };
       
-      // CRÍTICO: Para pagamentos com cartão, incluir o token gerado pelo Payment Brick
-      if (paymentMethodId === 'credit_card' || paymentMethodId === 'debit_card') {
+      // CRÍTICO: Para pagamentos com cartão, incluir campos obrigatórios
+      if (!isPix && paymentTypeId) {
         const token = formData?.token as string;
         if (!token) {
           console.error("❌ ERRO CRÍTICO: Token do cartão não encontrado!");
           console.error("FormData recebido:", formData);
           throw new Error("Token do cartão é obrigatório para pagamentos com cartão");
         }
-        paymentPayload.token = token;
-        console.log("💳 Token do cartão incluído no payload");
         
-        // Incluir issuer_id se disponível
+        paymentPayload.token = token;
+        paymentPayload.payment_type_id = paymentTypeId; // NOVO: Tipo do cartão
+        
+        // Converter issuer_id para number
         if (formData?.issuer_id) {
-          paymentPayload.issuer_id = formData.issuer_id;
+          const issuerId = formData.issuer_id;
+          paymentPayload.issuer_id = typeof issuerId === 'string' ? parseInt(issuerId, 10) : issuerId;
         }
+        
+        console.log("💳 Payload do cartão preparado:", {
+          payment_method_id: paymentMethodId,
+          payment_type_id: paymentTypeId,
+          token: token.substring(0, 10) + '...',
+          issuer_id: paymentPayload.issuer_id
+        });
       }
 
       console.log("🚀 Enviando pagamento para processar:", paymentPayload);

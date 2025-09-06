@@ -20,15 +20,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // Schema para validar request body inicial
     const requestBodySchema = z.object({
-      payment_method_id: z.enum(['pix', 'credit_card', 'debit_card'])
+      payment_method_id: z.string().min(1), // Pode ser "pix" ou bandeira do cartão
+      payment_type_id: z.enum(['credit_card', 'debit_card']).optional() // Presente apenas para cartões
     }).passthrough();
     
     // Validar body como unknown primeiro
     const rawBody = req.body as unknown;
-    const { payment_method_id } = requestBodySchema.parse(rawBody);
+    const { payment_method_id, payment_type_id } = requestBodySchema.parse(rawBody);
     
     // Determinar tipo de pagamento
     const isPix = payment_method_id === 'pix';
+    
+    // Log diagnóstico do payload recebido
+    logger.info('Payment request received', {
+      service: 'payment',
+      operation: 'create_request',
+      payment_method_id,
+      payment_type_id,
+      isPix
+    });
     
     // Validar com schema específico (regra: sempre Zod primeiro)
     const paymentData: PixPayment | CardPayment = isPix
@@ -72,13 +82,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       external_reference: `brinks-${Date.now()}`
     };
     
-    // CRÍTICO: Incluir token para pagamentos com cartão
+    // CRÍTICO: Incluir campos específicos para pagamentos com cartão
     if (!isPix && 'token' in paymentData) {
       const cardData = paymentData as CardPayment;
       mercadoPagoPayload.token = cardData.token;
-      logger.payment('token_included', cardData.token.substring(0, 10) + '...', {
-        hasIssuer: !!cardData.issuer_id,
-        paymentMethod: paymentData.payment_method_id
+      mercadoPagoPayload.payment_type_id = cardData.payment_type_id; // NOVO: Tipo do cartão
+      
+      logger.payment('card_payment_prepared', cardData.token.substring(0, 10) + '...', {
+        payment_method_id: cardData.payment_method_id, // Bandeira
+        payment_type_id: cardData.payment_type_id, // Tipo
+        hasIssuer: !!cardData.issuer_id
       });
       
       if (cardData.issuer_id) {
@@ -86,6 +99,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Log completo do payload final
+    logger.payment('sending_to_mercadopago', 'N/A', {
+      payload: {
+        payment_method_id: mercadoPagoPayload.payment_method_id,
+        payment_type_id: mercadoPagoPayload.payment_type_id,
+        hasToken: !!mercadoPagoPayload.token,
+        issuer_id: mercadoPagoPayload.issuer_id,
+        amount: mercadoPagoPayload.transaction_amount
+      }
+    });
+    
     // Create payment on MercadoPago servers
     const response = await axios.post(
       "https://api.mercadopago.com/v1/payments",
@@ -99,6 +123,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     );
 
+    // Log de sucesso
+    logger.payment('payment_created', response.data.id, {
+      status: response.data.status,
+      status_detail: response.data.status_detail,
+      payment_method_id: response.data.payment_method_id,
+      payment_type_id: response.data.payment_type_id
+    });
+    
     // Return payment data to frontend
     return res.status(200).json({
       id: response.data.id,
