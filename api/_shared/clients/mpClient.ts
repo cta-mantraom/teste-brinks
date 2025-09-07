@@ -1,7 +1,7 @@
-import MercadoPago, { Payment } from 'mercadopago';
+import { MercadoPagoConfig, Payment } from 'mercadopago';
 import { getServerConfig } from '../config/server.js';
 
-let mpClient: MercadoPago | null = null;
+let mpConfig: MercadoPagoConfig | null = null;
 let paymentClient: Payment | null = null;
 
 /**
@@ -9,19 +9,20 @@ let paymentClient: Payment | null = null;
  * Singleton pattern para reutilização
  */
 function initializeClient(): void {
-  if (mpClient) return;
+  if (paymentClient) return;
   
   const config = getServerConfig();
   
-  mpClient = new MercadoPago({
+  // Cria a configuração do SDK v2
+  mpConfig = new MercadoPagoConfig({
     accessToken: config.MERCADOPAGO_ACCESS_TOKEN,
     options: {
-      timeout: 10000,
-      idempotencyKey: 'brinks-integration'
+      timeout: 10000
     }
   });
   
-  paymentClient = new Payment(mpClient);
+  // Cria o cliente de pagamento
+  paymentClient = new Payment(mpConfig);
 }
 
 /**
@@ -38,20 +39,4 @@ export function getPaymentClient(): Payment {
   }
   
   return paymentClient;
-}
-
-/**
- * Retorna o cliente principal do MercadoPago
- * Inicializa se necessário (lazy loading)
- */
-export function getMercadoPagoClient(): MercadoPago {
-  if (!mpClient) {
-    initializeClient();
-  }
-  
-  if (!mpClient) {
-    throw new Error('Failed to initialize MercadoPago client');
-  }
-  
-  return mpClient;
 }
