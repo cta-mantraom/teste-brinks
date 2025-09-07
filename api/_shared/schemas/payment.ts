@@ -62,6 +62,16 @@ export const cardPaymentSchema = z.object({
   installments: z.number().int().min(1).max(12).default(1)
 })
 
+// Schema de item para antifraude/qualidade (melhora pontuação)
+export const paymentItemSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(1, 'Título do item obrigatório'),
+  description: z.string().optional(),
+  category_id: z.string().optional(), // Ex: "services", "digital_goods"
+  quantity: z.number().int().min(1).default(1),
+  unit_price: z.number().positive('Preço do item deve ser positivo')
+})
+
 // Schema de entrada do endpoint (validação de request)
 export const createPaymentRequestSchema = z.object({
   payment_method_id: z.string().min(1, 'Método de pagamento obrigatório'),
@@ -87,7 +97,9 @@ export const createPaymentRequestSchema = z.object({
       number: z.string().optional()
     }).optional()
   }),
-  installments: z.number().int().min(1).max(12).optional()
+  installments: z.number().int().min(1).max(12).optional(),
+  // Items do carrinho (opcional, mas melhora pontuação de qualidade)
+  items: z.array(paymentItemSchema).optional()
 })
 
 // Types exportados (inferidos do Zod, nunca manuais)
@@ -95,4 +107,5 @@ export type PixPayment = z.infer<typeof pixPaymentSchema>
 export type CardPayment = z.infer<typeof cardPaymentSchema>
 export type PixPayer = z.infer<typeof pixPayerSchema>
 export type CardPayer = z.infer<typeof cardPayerSchema>
+export type PaymentItem = z.infer<typeof paymentItemSchema>
 export type CreatePaymentRequest = z.infer<typeof createPaymentRequestSchema>

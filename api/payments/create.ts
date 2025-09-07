@@ -90,6 +90,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Construir items para antifraude/qualidade
+    const items = (requestData.items && requestData.items.length > 0)
+      ? requestData.items
+      : [{
+          id: 'default',
+          title: 'Checkout Brinks',
+          description: 'Pagamento via Checkout Brinks',
+          category_id: 'services',
+          quantity: 1,
+          unit_price: enforcedAmount
+        }];
+
     // Construir payload para SDK MercadoPago
     const mercadoPagoPayload = {
       transaction_amount: paymentData.transaction_amount,
@@ -119,6 +131,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         })
       },
+      // Adiciona detalhes do carrinho para melhorar pontuação/antifraude
+      additional_info: {
+        items
+      },
       notification_url: `${config.FRONTEND_URL}/api/webhooks/mercadopago`,
       statement_descriptor: "CHECKOUT BRINKS",
       external_reference: `brinks-${Date.now()}`
@@ -145,7 +161,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         payment_method_id: mercadoPagoPayload.payment_method_id,
         hasToken: !!('token' in mercadoPagoPayload),
         issuer_id: 'issuer_id' in mercadoPagoPayload ? mercadoPagoPayload.issuer_id : undefined,
-        amount: mercadoPagoPayload.transaction_amount
+        amount: mercadoPagoPayload.transaction_amount,
+        itemsCount: items.length,
+        hasAdditionalInfo: true
       }
     });
     
