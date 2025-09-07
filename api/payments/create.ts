@@ -27,21 +27,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Configuração lazy load
     const config = getServerConfig();
     
-    // Validar valor mínimo do carrinho
-    if (requestData.transaction_amount < config.MINIMUM_CART_VALUE) {
-      logger.warn('Payment below minimum value', {
-        service: 'payment',
-        operation: 'validation',
-        attempted_value: requestData.transaction_amount,
-        minimum_value: config.MINIMUM_CART_VALUE
-      });
-      
-      return res.status(400).json({
-        error: "Valor abaixo do mínimo permitido",
-        minimum: config.MINIMUM_CART_VALUE,
-        attempted: requestData.transaction_amount
-      });
-    }
+    // POLÍTICA DE VALOR MÍNIMO DE CARRINHO
+    // Por enquanto: cobrar exatamente o mínimo configurado (R$ 5,00)
+    // Futuro: Math.max(config.MINIMUM_CART_VALUE, valorCalculadoNoServidor)
+    const enforcedAmount = Math.max(config.MINIMUM_CART_VALUE, requestData.transaction_amount || 0);
+    
+    logger.info('Enforcing minimum cart value policy', {
+      service: 'payment',
+      operation: 'validation',
+      requested_amount: requestData.transaction_amount,
+      enforced_amount: enforcedAmount,
+      minimum_value: config.MINIMUM_CART_VALUE
+    });
     
     // Determinar tipo de pagamento
     const isPix = requestData.payment_method_id === 'pix';
@@ -59,9 +56,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let paymentData: PixPayment | CardPayment;
     
     if (isPix) {
-      // Validar e construir payload PIX
+      // Validar e construir payload PIX com valor enforced
       paymentData = pixPaymentSchema.parse({
-        transaction_amount: requestData.transaction_amount,
+        transaction_amount: enforcedAmount,
         payment_method_id: 'pix',
         payer: requestData.payer,
         description: 'Checkout Brinks',
@@ -81,9 +78,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
       
-      // Validar e construir payload Cartão
+      // Validar e construir payload Cartão com valor enforced
       paymentData = cardPaymentSchema.parse({
-        transaction_amount: requestData.transaction_amount,
+        transaction_amount: enforcedAmount,
         payment_method_id: requestData.payment_method_id,
         token: requestData.token,
         issuer_id: requestData.issuer_id,

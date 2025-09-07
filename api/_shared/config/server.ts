@@ -6,9 +6,10 @@ const serverEnvironmentSchema = z.object({
   MERCADOPAGO_WEBHOOK_SECRET: z.string().min(1, 'Webhook secret obrigatório'),
   FRONTEND_URL: z.string().url('FRONTEND_URL deve ser uma URL válida'),
   // Valor mínimo do carrinho - validação robusta com preprocess
+  // Default: R$ 5,00 (valor mínimo permitido)
   MINIMUM_CART_VALUE: z.preprocess(
-    (val) => val ?? 58,
-    z.coerce.number().min(1, 'Valor mínimo deve ser maior que zero')
+    (val) => val ?? 5,
+    z.coerce.number().min(5, 'Valor mínimo: R$ 5,00')
   ),
 })
 

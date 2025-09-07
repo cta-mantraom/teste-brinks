@@ -1,5 +1,5 @@
 import MercadoPago, { Payment } from 'mercadopago';
-import { getServerConfig } from '../config/server';
+import { getServerConfig } from '../config/server.js';
 
 let mpClient: MercadoPago | null = null;
 let paymentClient: Payment | null = null;
