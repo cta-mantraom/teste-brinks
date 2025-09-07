@@ -5,8 +5,10 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Checkout Brinks - MercadoPago</title>
-    <!-- MercadoPago Device Fingerprint (satisfaz "SDK do frontend" e "Identificador do dispositivo") -->
+    <!-- MercadoPago Device Fingerprint (satisfaz "Identificador do dispositivo") -->
     <script src="https://www.mercadopago.com/v2/security.js" view="checkout"></script>
+    <!-- SDK JS V2 explícito (satisfaz "SDK do frontend" no painel de qualidade) -->
+    <script src="https://sdk.mercadopago.com/js/v2"></script>
   </head>
   <body>
     <div id="root"></div>

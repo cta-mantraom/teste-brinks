@@ -57,10 +57,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     if (isPix) {
       // Validar e construir payload PIX com valor enforced
+      // Garantir nome/sobrenome para melhorar pontuação
+      const pixPayer = {
+        ...requestData.payer,
+        first_name: requestData.payer.first_name || 'Cliente',
+        last_name: requestData.payer.last_name || 'Brinks'
+      };
+      
       paymentData = pixPaymentSchema.parse({
         transaction_amount: enforcedAmount,
         payment_method_id: 'pix',
-        payer: requestData.payer,
+        payer: pixPayer,
         description: 'Checkout Brinks',
         installments: 1
       });
