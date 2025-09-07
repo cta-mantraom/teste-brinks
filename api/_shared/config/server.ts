@@ -5,6 +5,11 @@ const serverEnvironmentSchema = z.object({
   MERCADOPAGO_ACCESS_TOKEN: z.string().min(1, 'Access token obrigatório'),
   MERCADOPAGO_WEBHOOK_SECRET: z.string().min(1, 'Webhook secret obrigatório'),
   FRONTEND_URL: z.string().url('FRONTEND_URL deve ser uma URL válida'),
+  // Valor mínimo do carrinho - validação robusta com preprocess
+  MINIMUM_CART_VALUE: z.preprocess(
+    (val) => val ?? 58,
+    z.coerce.number().min(1, 'Valor mínimo deve ser maior que zero')
+  ),
 })
 
 export type ServerEnvironment = z.infer<typeof serverEnvironmentSchema>
@@ -21,6 +26,7 @@ export const getServerConfig = (): ServerEnvironment => {
     MERCADOPAGO_ACCESS_TOKEN: getEnvVar('MERCADOPAGO_ACCESS_TOKEN'),
     MERCADOPAGO_WEBHOOK_SECRET: getEnvVar('MERCADOPAGO_WEBHOOK_SECRET'),
     FRONTEND_URL: getEnvVar('FRONTEND_URL') || getEnvVar('VITE_FRONTEND_URL'),
+    MINIMUM_CART_VALUE: getEnvVar('MINIMUM_CART_VALUE'),
   }
 
   // Se FRONTEND_URL não existir, falha explícita (100% produção)

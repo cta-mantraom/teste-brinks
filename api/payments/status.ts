@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import axios from "axios";
 import { z } from "zod";
-import { getServerConfig } from "../_shared/config/server.js";
+import { getPaymentClient } from "../_shared/clients/mpClient.js";
+import { logger } from "../_shared/utils/logger.js";
 
 const statusQuerySchema = z.object({
   paymentId: z.string().min(1, 'paymentId obrigatório')
@@ -18,34 +18,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const query = req.query as unknown;
     const { paymentId } = statusQuerySchema.parse(query);
 
-    // Configuração lazy load
-    const config = getServerConfig();
+    logger.info('Payment status check requested', {
+      service: 'payment',
+      operation: 'status_check',
+      paymentId
+    });
 
-    // Get payment status from MercadoPago
-    const response = await axios.get(
-      `https://api.mercadopago.com/v1/payments/${paymentId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${config.MERCADOPAGO_ACCESS_TOKEN}`,
-        },
-      }
-    );
+    // Obter cliente SDK e buscar status do pagamento
+    const paymentClient = getPaymentClient();
+    const response = await paymentClient.get({
+      id: paymentId
+    });
+
+    // Validar resposta
+    if (!response || !response.id) {
+      throw new Error('Invalid response from MercadoPago SDK');
+    }
+
+    logger.info('Payment status retrieved', {
+      service: 'payment',
+      operation: 'status_check',
+      paymentId: response.id.toString(),
+      status: response.status,
+      status_detail: response.status_detail
+    });
 
     // Return payment status to frontend
     return res.status(200).json({
-      id: response.data.id,
-      status: response.data.status,
-      status_detail: response.data.status_detail,
-      transaction_amount: response.data.transaction_amount,
-      date_created: response.data.date_created,
-      date_approved: response.data.date_approved,
-      point_of_interaction: response.data.point_of_interaction,
-      payer: response.data.payer,
-      payment_method_id: response.data.payment_method_id,
-      external_reference: response.data.external_reference
+      id: response.id,
+      status: response.status,
+      status_detail: response.status_detail,
+      transaction_amount: response.transaction_amount,
+      date_created: response.date_created,
+      date_approved: response.date_approved,
+      point_of_interaction: response.point_of_interaction,
+      payer: response.payer,
+      payment_method_id: response.payment_method_id,
+      external_reference: response.external_reference
     });
   } catch (error: unknown) {
-    console.error("[STATUS_CHECK] Erro:", error);
+    logger.error('Payment status check failed', {
+      service: 'payment',
+      operation: 'status_check'
+    }, error);
 
     if (error instanceof z.ZodError) {
       return res.status(400).json({
@@ -54,11 +69,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    if (axios.isAxiosError(error)) {
-      const mpError = error.response?.data;
-      return res.status(error.response?.status || 500).json({
-        error: mpError?.message || mpError?.cause?.description || "Falha ao obter status",
-        cause: mpError?.cause
+    // Tratar erro do SDK MercadoPago
+    if (error instanceof Error && 'status' in error) {
+      const mpError = error as { status?: number; message?: string; cause?: unknown[] };
+      logger.error('MercadoPago SDK error', {
+        service: 'payment',
+        operation: 'status_check',
+        status: mpError.status,
+        errorMessage: mpError.message
+      }, error);
+      
+      return res.status(mpError.status || 500).json({
+        error: mpError.message || "Falha ao obter status do pagamento",
+        cause: mpError.cause
       });
     }
 

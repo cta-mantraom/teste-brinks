@@ -50,10 +50,44 @@ export const cardPaymentSchema = z.object({
   transaction_amount: z.number().positive('Valor deve ser positivo'),
   payment_method_id: z.string().min(1, 'Bandeira do cartão obrigatória'), // Bandeira: master, visa, elo, etc
   token: z.string().min(1, 'Token do cartão é obrigatório'), // TOKEN OBRIGATÓRIO
-  issuer_id: z.number().optional(), // Banco emissor (opcional)
+  issuer_id: z.union([
+    z.string().transform(val => {
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    }),
+    z.number()
+  ]).optional(), // Aceita string ou número, normaliza para número
   payer: cardPayerSchema,
   description: z.string().default('Checkout Brinks'),
   installments: z.number().int().min(1).max(12).default(1)
+})
+
+// Schema de entrada do endpoint (validação de request)
+export const createPaymentRequestSchema = z.object({
+  payment_method_id: z.string().min(1, 'Método de pagamento obrigatório'),
+  transaction_amount: z.number().positive('Valor deve ser positivo'),
+  token: z.string().optional(), // Obrigatório para cartão, ignorado para PIX
+  issuer_id: z.union([
+    z.string().transform(val => {
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    }),
+    z.number()
+  ]).optional(),
+  payer: z.object({
+    email: z.string().email('Email inválido'),
+    first_name: z.string().optional(),
+    last_name: z.string().optional(),
+    identification: z.object({
+      type: z.string().optional(),
+      number: z.string().optional()
+    }).optional(),
+    phone: z.object({
+      area_code: z.string().optional(),
+      number: z.string().optional()
+    }).optional()
+  }),
+  installments: z.number().int().min(1).max(12).optional()
 })
 
 // Types exportados (inferidos do Zod, nunca manuais)
@@ -61,3 +95,4 @@ export type PixPayment = z.infer<typeof pixPaymentSchema>
 export type CardPayment = z.infer<typeof cardPaymentSchema>
 export type PixPayer = z.infer<typeof pixPayerSchema>
 export type CardPayer = z.infer<typeof cardPayerSchema>
+export type CreatePaymentRequest = z.infer<typeof createPaymentRequestSchema>

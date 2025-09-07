@@ -44,19 +44,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (payload.type === "payment" && payload.data.id) {
+      // Log sanitizado - sem PII (dados pessoais)
       logger.payment('webhook_received', payload.data.id, {
         action: payload.action,
         liveMode: payload.live_mode,
-        userId: payload.user_id
+        // Não logar userId direto, apenas indicar presença
+        hasUserId: !!payload.user_id
       });
 
       // TODO: Implementar persistência em banco de dados
       // - Salvar status do pagamento
       // - Atualizar pedido
       // - Enviar notificação ao usuário
+      // IMPORTANTE: Em produção, buscar detalhes do pagamento via SDK
+      // e atualizar no banco de dados de forma segura
       
       logger.webhook('notification_processed', {
-        paymentId: payload.data.id
+        paymentId: payload.data.id,
+        processedAt: new Date().toISOString()
       });
       
       return res.status(200).json({

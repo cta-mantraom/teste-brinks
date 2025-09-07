@@ -1,14 +1,16 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import axios from "axios";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { 
+  createPaymentRequestSchema,
   pixPaymentSchema, 
   cardPaymentSchema,
   type PixPayment,
-  type CardPayment 
+  type CardPayment,
+  type CreatePaymentRequest
 } from "../_shared/schemas/payment.js";
 import { getServerConfig } from "../_shared/config/server.js";
+import { getPaymentClient } from "../_shared/clients/mpClient.js";
 import { logger } from "../_shared/utils/logger.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -18,36 +20,81 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Schema para validar request body inicial
-    const requestBodySchema = z.object({
-      payment_method_id: z.string().min(1) // Pode ser "pix" ou bandeira do cartão
-    }).passthrough();
-    
     // Validar body como unknown primeiro
     const rawBody = req.body as unknown;
-    const { payment_method_id } = requestBodySchema.parse(rawBody);
+    const requestData = createPaymentRequestSchema.parse(rawBody);
+    
+    // Configuração lazy load
+    const config = getServerConfig();
+    
+    // Validar valor mínimo do carrinho
+    if (requestData.transaction_amount < config.MINIMUM_CART_VALUE) {
+      logger.warn('Payment below minimum value', {
+        service: 'payment',
+        operation: 'validation',
+        attempted_value: requestData.transaction_amount,
+        minimum_value: config.MINIMUM_CART_VALUE
+      });
+      
+      return res.status(400).json({
+        error: "Valor abaixo do mínimo permitido",
+        minimum: config.MINIMUM_CART_VALUE,
+        attempted: requestData.transaction_amount
+      });
+    }
     
     // Determinar tipo de pagamento
-    const isPix = payment_method_id === 'pix';
+    const isPix = requestData.payment_method_id === 'pix';
     
     // Log diagnóstico do payload recebido
     logger.info('Payment request received', {
       service: 'payment',
       operation: 'create_request',
-      payment_method_id,
-      isPix
+      payment_method_id: requestData.payment_method_id,
+      isPix,
+      amount: requestData.transaction_amount
     });
     
-    // Validar com schema específico (regra: sempre Zod primeiro)
-    const paymentData: PixPayment | CardPayment = isPix
-      ? pixPaymentSchema.parse(rawBody)
-      : cardPaymentSchema.parse(rawBody);
+    // Preparar dados específicos por tipo de pagamento
+    let paymentData: PixPayment | CardPayment;
+    
+    if (isPix) {
+      // Validar e construir payload PIX
+      paymentData = pixPaymentSchema.parse({
+        transaction_amount: requestData.transaction_amount,
+        payment_method_id: 'pix',
+        payer: requestData.payer,
+        description: 'Checkout Brinks',
+        installments: 1
+      });
+    } else {
+      // Validar token obrigatório para cartão
+      if (!requestData.token) {
+        logger.error('Card payment without token', {
+          service: 'payment',
+          operation: 'validation',
+          payment_method_id: requestData.payment_method_id
+        });
+        
+        return res.status(400).json({
+          error: "Token do cartão é obrigatório para pagamentos com cartão"
+        });
+      }
+      
+      // Validar e construir payload Cartão
+      paymentData = cardPaymentSchema.parse({
+        transaction_amount: requestData.transaction_amount,
+        payment_method_id: requestData.payment_method_id,
+        token: requestData.token,
+        issuer_id: requestData.issuer_id,
+        payer: requestData.payer,
+        description: 'Checkout Brinks',
+        installments: requestData.installments || 1
+      });
+    }
 
-    // Configuração lazy load
-    const config = getServerConfig();
-
-    // Construir payload para MercadoPago (tipagem explícita)
-    const mercadoPagoPayload: Record<string, unknown> = {
+    // Construir payload para SDK MercadoPago
+    const mercadoPagoPayload = {
       transaction_amount: paymentData.transaction_amount,
       payment_method_id: paymentData.payment_method_id,
       description: paymentData.description,
@@ -80,59 +127,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       external_reference: `brinks-${Date.now()}`
     };
     
-    // CRÍTICO: Incluir campos específicos para pagamentos com cartão
+    // Incluir campos específicos para pagamentos com cartão
     if (!isPix && 'token' in paymentData) {
       const cardData = paymentData as CardPayment;
-      mercadoPagoPayload.token = cardData.token;
-      
-      logger.payment('card_payment_prepared', cardData.token.substring(0, 10) + '...', {
-        payment_method_id: cardData.payment_method_id, // Bandeira
-        hasIssuer: !!cardData.issuer_id
+      Object.assign(mercadoPagoPayload, {
+        token: cardData.token,
+        ...(cardData.issuer_id && { issuer_id: cardData.issuer_id })
       });
       
-      if (cardData.issuer_id) {
-        mercadoPagoPayload.issuer_id = cardData.issuer_id;
-      }
+      logger.payment('card_payment_prepared', 'token_masked', {
+        payment_method_id: cardData.payment_method_id,
+        hasIssuer: !!cardData.issuer_id,
+        hasToken: true
+      });
     }
 
-    // Log completo do payload final
+    // Log do payload final (sem dados sensíveis)
     logger.payment('sending_to_mercadopago', 'N/A', {
       payload: {
         payment_method_id: mercadoPagoPayload.payment_method_id,
-        hasToken: !!mercadoPagoPayload.token,
-        issuer_id: mercadoPagoPayload.issuer_id,
+        hasToken: !!('token' in mercadoPagoPayload),
+        issuer_id: 'issuer_id' in mercadoPagoPayload ? mercadoPagoPayload.issuer_id : undefined,
         amount: mercadoPagoPayload.transaction_amount
       }
     });
     
-    // Create payment on MercadoPago servers
-    const response = await axios.post(
-      "https://api.mercadopago.com/v1/payments",
-      mercadoPagoPayload,
-      {
-        headers: {
-          Authorization: `Bearer ${config.MERCADOPAGO_ACCESS_TOKEN}`,
-          "X-Idempotency-Key": randomUUID(),
-          "Content-Type": "application/json",
-        },
+    // Obter cliente SDK e criar pagamento
+    const paymentClient = getPaymentClient();
+    const response = await paymentClient.create({
+      body: mercadoPagoPayload,
+      requestOptions: {
+        idempotencyKey: randomUUID()
       }
-    );
+    });
+
+    // Validar resposta
+    if (!response || !response.id) {
+      throw new Error('Invalid response from MercadoPago SDK');
+    }
 
     // Log de sucesso
-    logger.payment('payment_created', response.data.id, {
-      status: response.data.status,
-      status_detail: response.data.status_detail,
-      payment_method_id: response.data.payment_method_id
+    logger.payment('payment_created', response.id.toString(), {
+      status: response.status,
+      status_detail: response.status_detail,
+      payment_method_id: response.payment_method_id
     });
     
     // Return payment data to frontend
     return res.status(200).json({
-      id: response.data.id,
-      status: response.data.status,
-      status_detail: response.data.status_detail,
-      point_of_interaction: response.data.point_of_interaction,
+      id: response.id,
+      status: response.status,
+      status_detail: response.status_detail,
+      point_of_interaction: response.point_of_interaction,
     });
-  } catch (error: unknown) { // NUNCA any, sempre unknown
+  } catch (error: unknown) {
     logger.error('Payment creation failed', { 
       service: 'payment',
       operation: 'create'
@@ -146,21 +194,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Tratar erro Axios
-    if (axios.isAxiosError(error)) {
-      const mpError = error.response?.data;
-      logger.error('MercadoPago API error', {
+    // Tratar erro do SDK MercadoPago
+    if (error instanceof Error && 'status' in error) {
+      const mpError = error as { status?: number; message?: string; cause?: unknown[] };
+      logger.error('MercadoPago SDK error', {
         service: 'payment',
-        operation: 'mercadopago_api',
-        status: error.response?.status,
-        errorCode: mpError?.cause?.[0]?.code,
-        errorMessage: mpError?.message
+        operation: 'mercadopago_sdk',
+        status: mpError.status,
+        errorMessage: mpError.message
       }, error);
       
-      return res.status(error.response?.status || 500).json({
-        error: mpError?.message || mpError?.error || "Falha no processamento",
-        cause: mpError?.cause,
-        details: mpError
+      return res.status(mpError.status || 500).json({
+        error: mpError.message || "Falha no processamento do pagamento",
+        cause: mpError.cause
       });
     }
 
