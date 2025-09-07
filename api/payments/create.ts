@@ -20,13 +20,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // Schema para validar request body inicial
     const requestBodySchema = z.object({
-      payment_method_id: z.string().min(1), // Pode ser "pix" ou bandeira do cartão
-      payment_type_id: z.enum(['credit_card', 'debit_card']).optional() // Presente apenas para cartões
+      payment_method_id: z.string().min(1) // Pode ser "pix" ou bandeira do cartão
     }).passthrough();
     
     // Validar body como unknown primeiro
     const rawBody = req.body as unknown;
-    const { payment_method_id, payment_type_id } = requestBodySchema.parse(rawBody);
+    const { payment_method_id } = requestBodySchema.parse(rawBody);
     
     // Determinar tipo de pagamento
     const isPix = payment_method_id === 'pix';
@@ -36,7 +35,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       service: 'payment',
       operation: 'create_request',
       payment_method_id,
-      payment_type_id,
       isPix
     });
     
@@ -86,11 +84,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!isPix && 'token' in paymentData) {
       const cardData = paymentData as CardPayment;
       mercadoPagoPayload.token = cardData.token;
-      mercadoPagoPayload.payment_type_id = cardData.payment_type_id; // NOVO: Tipo do cartão
       
       logger.payment('card_payment_prepared', cardData.token.substring(0, 10) + '...', {
         payment_method_id: cardData.payment_method_id, // Bandeira
-        payment_type_id: cardData.payment_type_id, // Tipo
         hasIssuer: !!cardData.issuer_id
       });
       
@@ -103,7 +99,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     logger.payment('sending_to_mercadopago', 'N/A', {
       payload: {
         payment_method_id: mercadoPagoPayload.payment_method_id,
-        payment_type_id: mercadoPagoPayload.payment_type_id,
         hasToken: !!mercadoPagoPayload.token,
         issuer_id: mercadoPagoPayload.issuer_id,
         amount: mercadoPagoPayload.transaction_amount
@@ -127,8 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     logger.payment('payment_created', response.data.id, {
       status: response.data.status,
       status_detail: response.data.status_detail,
-      payment_method_id: response.data.payment_method_id,
-      payment_type_id: response.data.payment_type_id
+      payment_method_id: response.data.payment_method_id
     });
     
     // Return payment data to frontend

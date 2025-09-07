@@ -49,7 +49,6 @@ export const pixPaymentSchema = z.object({
 export const cardPaymentSchema = z.object({
   transaction_amount: z.number().positive('Valor deve ser positivo'),
   payment_method_id: z.string().min(1, 'Bandeira do cartão obrigatória'), // Bandeira: master, visa, elo, etc
-  payment_type_id: z.enum(['credit_card', 'debit_card']), // Tipo do cartão
   token: z.string().min(1, 'Token do cartão é obrigatório'), // TOKEN OBRIGATÓRIO
   issuer_id: z.number().optional(), // Banco emissor (opcional)
   payer: cardPayerSchema,

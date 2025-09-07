@@ -46,15 +46,7 @@ export const PaymentBrick = ({
       const paymentMethodId = formData?.payment_method_id as string; // Ex: "master", "visa", "elo"
       const paymentType = brickData.paymentType as string; // Ex: "credit_card", "debit_card", "bank_transfer"
       
-      // Determinar payment_type_id baseado no tipo
-      let paymentTypeId: string | undefined;
-      if (paymentType === 'credit_card') {
-        paymentTypeId = 'credit_card';
-      } else if (paymentType === 'debit_card') {
-        paymentTypeId = 'debit_card';
-      }
-      
-      // PIX usa payment_method_id = "pix" sem payment_type_id
+      // PIX usa payment_method_id = "pix"
       const isPix = paymentType === 'bank_transfer' || paymentMethodId === 'pix';
       
       // Preparar dados para enviar ao backend
@@ -81,7 +73,7 @@ export const PaymentBrick = ({
       };
       
       // CRÍTICO: Para pagamentos com cartão, incluir campos obrigatórios
-      if (!isPix && paymentTypeId) {
+      if (!isPix) {
         const token = formData?.token as string;
         if (!token) {
           console.error("❌ ERRO CRÍTICO: Token do cartão não encontrado!");
@@ -90,7 +82,6 @@ export const PaymentBrick = ({
         }
         
         paymentPayload.token = token;
-        paymentPayload.payment_type_id = paymentTypeId; // NOVO: Tipo do cartão
         
         // Converter issuer_id para number
         if (formData?.issuer_id) {
@@ -100,7 +91,6 @@ export const PaymentBrick = ({
         
         console.log("💳 Payload do cartão preparado:", {
           payment_method_id: paymentMethodId,
-          payment_type_id: paymentTypeId,
           token: token.substring(0, 10) + '...',
           issuer_id: paymentPayload.issuer_id
         });
