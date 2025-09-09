@@ -99,7 +99,9 @@ export const createPaymentRequestSchema = z.object({
   }),
   installments: z.number().int().min(1).max(12).optional(),
   // Items do carrinho (opcional, mas melhora pontuação de qualidade)
-  items: z.array(paymentItemSchema).optional()
+  items: z.array(paymentItemSchema).optional(),
+  // Device fingerprint (melhora pontuação antifraude)
+  device_id: z.string().optional()
 })
 
 // Types exportados (inferidos do Zod, nunca manuais)

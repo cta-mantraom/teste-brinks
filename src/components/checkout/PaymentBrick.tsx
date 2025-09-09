@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Payment } from "@mercadopago/sdk-react";
 import { initializeMercadoPago } from "../../lib/config/mercadopago";
+import { useDeviceFingerprint } from "../../hooks/useDeviceFingerprint";
 
 interface PaymentBrickProps {
   amount: number;
@@ -21,6 +22,8 @@ export const PaymentBrick = ({
   onPaymentSuccess,
   onError,
 }: PaymentBrickProps) => {
+  const deviceId = useDeviceFingerprint();
+  
   useEffect(() => {
     try {
       initializeMercadoPago();
@@ -69,8 +72,15 @@ export const PaymentBrick = ({
           }
         },
         description: 'Checkout Brinks',
-        installments: (formData?.installments as number) || 1
+        installments: (formData?.installments as number) || 1,
+        ...(deviceId && { device_id: deviceId })
       };
+      
+      if (deviceId) {
+        console.log('🔒 Device fingerprint incluído no pagamento:', deviceId);
+      } else {
+        console.warn('⚠️ Device fingerprint não disponível');
+      }
       
       // CRÍTICO: Para pagamentos com cartão, incluir campos obrigatórios
       if (!isPix) {

@@ -110,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }];
 
     // Construir payload para SDK MercadoPago
-    const mercadoPagoPayload = {
+    const mercadoPagoPayload: Record<string, any> = {
       transaction_amount: paymentData.transaction_amount,
       payment_method_id: paymentData.payment_method_id,
       description: paymentData.description,
@@ -162,6 +162,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Device fingerprint para antifraude
+    if (requestData.device_id) {
+      mercadoPagoPayload.device = {
+        fingerprint: {
+          os: "OTHER",
+          system_version: "UNKNOWN",
+          ram: 0,
+          disk_space: 0,
+          model: "UNKNOWN",
+          free_disk_space: 0,
+          vendor_ids: [{
+            name: "device_fingerprint_id",
+            value: requestData.device_id
+          }]
+        }
+      };
+      logger.info('Device fingerprint included', {
+        service: 'payment',
+        operation: 'fingerprint',
+        hasDeviceId: true
+      });
+    }
+    
     // Log do payload final (sem dados sensíveis)
     logger.payment('sending_to_mercadopago', 'N/A', {
       payload: {
@@ -170,7 +193,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         issuer_id: 'issuer_id' in mercadoPagoPayload ? mercadoPagoPayload.issuer_id : undefined,
         amount: mercadoPagoPayload.transaction_amount,
         itemsCount: items.length,
-        hasAdditionalInfo: true
+        hasAdditionalInfo: true,
+        hasDeviceFingerprint: !!requestData.device_id
       }
     });
     
@@ -179,7 +203,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const response = await paymentClient.create({
       body: mercadoPagoPayload,
       requestOptions: {
-        idempotencyKey: randomUUID()
+        idempotencyKey: randomUUID(),
+        ...(requestData.device_id && {
+          customHeaders: {
+            'X-Device-Id': requestData.device_id
+          }
+        })
       }
     });
 
