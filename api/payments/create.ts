@@ -109,8 +109,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           unit_price: enforcedAmount
         }];
 
-    // Construir payload para SDK MercadoPago
-    const mercadoPagoPayload: Record<string, any> = {
+    // Construir payload para SDK MercadoPago - tipo inferido do SDK
+    const mercadoPagoPayload = {
       transaction_amount: paymentData.transaction_amount,
       payment_method_id: paymentData.payment_method_id,
       description: paymentData.description,
@@ -164,20 +164,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Device fingerprint para antifraude
     if (requestData.device_id) {
-      mercadoPagoPayload.device = {
-        fingerprint: {
-          os: "OTHER",
-          system_version: "UNKNOWN",
-          ram: 0,
-          disk_space: 0,
-          model: "UNKNOWN",
-          free_disk_space: 0,
-          vendor_ids: [{
-            name: "device_fingerprint_id",
-            value: requestData.device_id
-          }]
+      Object.assign(mercadoPagoPayload, {
+        device: {
+          fingerprint: {
+            os: "OTHER",
+            system_version: "UNKNOWN",
+            ram: 0,
+            disk_space: 0,
+            model: "UNKNOWN",
+            free_disk_space: 0,
+            vendor_ids: [{
+              name: "device_fingerprint_id",
+              value: requestData.device_id
+            }]
+          }
         }
-      };
+      });
       logger.info('Device fingerprint included', {
         service: 'payment',
         operation: 'fingerprint',
@@ -199,9 +201,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     
     // Obter cliente SDK e criar pagamento
+    // SDK do MercadoPago tem tipagem própria interna
     const paymentClient = getPaymentClient();
     const response = await paymentClient.create({
-      body: mercadoPagoPayload,
+      body: mercadoPagoPayload as Parameters<typeof paymentClient.create>[0]['body'],
       requestOptions: {
         idempotencyKey: randomUUID(),
         ...(requestData.device_id && {
