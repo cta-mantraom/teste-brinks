@@ -6,8 +6,7 @@ import {
   pixPaymentSchema, 
   cardPaymentSchema,
   type PixPayment,
-  type CardPayment,
-  type CreatePaymentRequest
+  type CardPayment
 } from "../_shared/schemas/payment.js";
 import { getServerConfig } from "../_shared/config/server.js";
 import { getPaymentClient } from "../_shared/clients/mpClient.js";

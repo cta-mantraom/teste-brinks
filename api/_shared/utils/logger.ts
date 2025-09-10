@@ -46,10 +46,10 @@ class StructuredLogger {
     console.error(this.formatLog('error', message, context, error));
   }
   
-  debug(_message: string, _context?: LogContext): void {
-    // Debug logs desabilitados em produção
-    // Para habilitar em dev local, descomentar linha abaixo:
-    // console.log(this.formatLog(_message, 'debug', _context));
+  debug(): void {
+    // Debug logs completamente desabilitados
+    // Método mantido para compatibilidade de interface
+    return;
   }
   
   // Log específico para pagamentos
